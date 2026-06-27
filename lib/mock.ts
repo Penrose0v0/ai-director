@@ -1,0 +1,123 @@
+import type { DirectorSettings, ReviewResult, Shot } from "./types";
+import { emptySettings } from "./types";
+
+// ---------------------------------------------------------------------------
+// MOCK AI LAYER
+// ---------------------------------------------------------------------------
+// Everything here stands in for Gemini calls until the API key is available.
+// Each function's signature is what the real Gemini-backed version should keep,
+// so swapping the implementation inside the /api routes is a drop-in change.
+// ---------------------------------------------------------------------------
+
+let _id = 0;
+export const uid = (prefix = "id") => `${prefix}_${Date.now().toString(36)}_${_id++}`;
+
+/** Mock of Gemini "story understanding": story text -> suggested shot cards. */
+export function breakdownStory(story: string): Shot[] {
+  const trimmed = story.trim();
+  // A fixed, demo-friendly breakdown that loosely keys off the story text.
+  const titles = trimmed
+    ? [
+        "Shot 1 — 女生站在便利店门口看手机",
+        "Shot 2 — 她抬头看到远处黑影",
+        "Shot 3 — 她跑进雨中",
+      ]
+    : ["Shot 1 — 新镜头"];
+
+  return titles.map((title, i) => {
+    const settings: DirectorSettings = {
+      ...emptySettings(),
+      character: i === 0 ? "年轻女性，黑色外套，手持手机" : "年轻女性，黑色外套",
+      visualStyle: "rainy Tokyo night, neon reflections on wet pavement",
+      mood: "Suspenseful",
+      timeline:
+        i === 0
+          ? [
+              { id: uid("beat"), from: 0, to: 2, description: "she looks down at her phone with hesitation" },
+              { id: uid("beat"), from: 2, to: 4, description: "she slowly raises her head" },
+              { id: uid("beat"), from: 4, to: 6, description: "she notices a dark shadow in the background" },
+            ]
+          : [],
+      constraints:
+        i === 0 ? ["same black coat", "same phone", "no extra people", "keep it night"] : [],
+    };
+    return { id: uid("shot"), title, settings };
+  });
+}
+
+/** Mock of Gemini "video understanding + compliance check". */
+export function reviewVideo(shot: Shot): ReviewResult {
+  const s = shot.settings;
+  const items: ReviewResult["items"] = [];
+
+  // Timeline beats — pretend the model missed the first two actions.
+  s.timeline.forEach((b, i) => {
+    items.push({
+      field: "timeline",
+      expectation: `${b.from}–${b.to}s: ${b.description}`,
+      observed:
+        i === 0
+          ? "character looks straight at the camera, no phone-checking"
+          : i === 1
+            ? "no clear head-raise motion"
+            : "shadow is visible but appears too early",
+      status: i < 2 ? "fail" : "partial",
+    });
+  });
+
+  if (s.cameraMovement !== "Static") {
+    items.push({
+      field: "cameraMovement",
+      expectation: s.cameraMovement,
+      observed: "camera is mostly static",
+      status: "fail",
+    });
+  }
+
+  if (s.visualStyle) {
+    items.push({
+      field: "visualStyle",
+      expectation: s.visualStyle,
+      observed: "night exists, but pavement is not visibly wet",
+      status: "partial",
+    });
+  }
+
+  for (const c of s.constraints) {
+    const lc = c.toLowerCase();
+    if (lc.includes("extra people")) {
+      items.push({ field: "constraints", expectation: c, observed: "extra pedestrians appear in background", status: "fail" });
+    } else if (lc.includes("coat")) {
+      items.push({ field: "constraints", expectation: c, observed: "coat stays black", status: "pass" });
+    } else {
+      items.push({ field: "constraints", expectation: c, observed: "respected", status: "pass" });
+    }
+  }
+
+  const weight = { pass: 1, partial: 0.5, fail: 0 } as const;
+  const score = items.length
+    ? Math.round((items.reduce((a, it) => a + weight[it.status], 0) / items.length) * 100)
+    : 0;
+
+  const failed = items.filter((i) => i.status !== "pass");
+  const fixPrompt = buildFixPrompt(shot, failed);
+
+  return {
+    items,
+    score,
+    summary: `${items.filter((i) => i.status === "pass").length}/${items.length} director settings satisfied.`,
+    fixPrompt,
+  };
+}
+
+function buildFixPrompt(shot: Shot, failed: ReviewResult["items"]): string {
+  if (!failed.length) return "All director settings were satisfied — no fix needed.";
+  const fixes = failed
+    .map((f) => `- ${f.expectation} (issue: ${f.observed})`)
+    .join("\n");
+  return (
+    `Regenerate "${shot.title}". The previous take missed the following director settings:\n` +
+    `${fixes}\n\n` +
+    `Re-emphasize each of these explicitly. Keep everything that already matched unchanged.`
+  );
+}
