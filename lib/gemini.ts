@@ -12,10 +12,14 @@ import { CAMERA_ANGLES, CAMERA_MOVEMENTS, MOODS, SHOT_SIZES } from "./options";
 // ---------------------------------------------------------------------------
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-generate-001";
+const VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || "veo-3.0-generate-001";
 
 export function geminiEnabled(): boolean {
   return !!process.env.GEMINI_API_KEY;
 }
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 let _client: GoogleGenAI | null = null;
 function client(): GoogleGenAI {
@@ -290,4 +294,57 @@ export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<Rev
       `Camera movement must be inferred from how the framing changes between consecutive frames.`,
     mediaParts,
   );
+}
+
+// ---- Image generation: storyboard frame (Imagen) ---------------------------
+
+export async function generateStoryboardAI(prompt: string): Promise<string> {
+  const r = await client().models.generateImages({
+    model: IMAGE_MODEL,
+    prompt: `Cinematic film storyboard frame, 16:9, moody lighting. ${prompt}`,
+    config: { numberOfImages: 1, aspectRatio: "16:9" },
+  });
+  const img = r.generatedImages?.[0]?.image;
+  if (!img?.imageBytes) throw new Error("image model returned no image");
+  return `data:${img.mimeType || "image/png"};base64,${img.imageBytes}`;
+}
+
+// ---- Video generation: Veo (long-running, polled) --------------------------
+
+export async function generateVideoAI(
+  prompt: string,
+  image?: { mimeType: string; data: string },
+): Promise<{ mimeType: string; data: string }> {
+  // When a storyboard frame is supplied, animate from it (image-to-video);
+  // otherwise fall back to pure text-to-video.
+  let op = await client().models.generateVideos({
+    model: VIDEO_MODEL,
+    prompt,
+    ...(image ? { image: { imageBytes: image.data, mimeType: image.mimeType } } : {}),
+    config: { numberOfVideos: 1, aspectRatio: "16:9" },
+  });
+
+  // Poll until done or we hit the cap (keep under the Cloud Run request timeout).
+  const maxSeconds = 270;
+  let waited = 0;
+  while (!op.done && waited < maxSeconds) {
+    await sleep(8000);
+    waited += 8;
+    op = await client().operations.getVideosOperation({ operation: op });
+  }
+  if (!op.done) throw new Error("video generation timed out");
+
+  const v = op.response?.generatedVideos?.[0]?.video;
+  if (!v) throw new Error("Veo returned no video");
+
+  if (v.videoBytes) return { mimeType: v.mimeType || "video/mp4", data: v.videoBytes };
+
+  // Some responses return a file URI instead of inline bytes — download it.
+  if (v.uri) {
+    const res = await fetch(v.uri, { headers: { "x-goog-api-key": process.env.GEMINI_API_KEY ?? "" } });
+    if (!res.ok) throw new Error(`video download failed: ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { mimeType: v.mimeType || "video/mp4", data: buf.toString("base64") };
+  }
+  throw new Error("Veo video had neither bytes nor uri");
 }

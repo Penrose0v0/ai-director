@@ -43,7 +43,14 @@ GEMINI_MODEL=gemini-2.5-flash   # 可选，默认 gemini-2.5-flash
 | `app/api/story`      | ✅ Gemini 故事理解 → 结构化分镜（回退 mock）          |
 | `app/api/compile`    | ✅ Gemini Prompt Compiler（回退确定性编译器）     |
 | `app/api/review`     | ✅ Gemini 多模态 — 原生视频理解（回退抽帧 → 回退 mock）+ 结构化建议 |
-| `app/api/storyboard` | ⏳ 仍 SVG 占位 — 等接 Gemini 图像模型            |
+| `app/api/storyboard` | ✅ Imagen 生成分镜图（回退 SVG 占位）           |
+| `app/api/generate-video` | ✅ Veo 文生视频（长任务轮询；回退 sample 视频）   |
+
+模型名都可用环境变量覆盖（见 `.env.example`）：`GEMINI_IMAGE_MODEL`（默认 `imagen-4.0-generate-001`）、
+`GEMINI_VIDEO_MODEL`（默认 `veo-3.0-generate-001`）。默认名若与你账号可用的不符，会自动回退占位/sample，把正确名填进 `.env.local` 即可。
+
+> Veo 是长任务（约 1–2 分钟，服务端轮询 operation）。部署到 Cloud Run 时记得把请求超时调长：
+> `gcloud run deploy ... --timeout=600`，否则可能在生成完成前断开。
 
 ### Director Review 怎么跑
 

@@ -1,14 +1,25 @@
 import { NextResponse } from "next/server";
 import { placeholderStoryboard } from "@/lib/storyboard";
+import { generateStoryboardAI, geminiEnabled } from "@/lib/gemini";
 
-// POST /api/storyboard  { prompt: string, index?: number }  ->  { imageUrl: string }
+// POST /api/storyboard  { prompt: string, index?: number }  ->  { imageUrl, source }
 //
-// TODO(gemini): replace placeholderStoryboard() with a Gemini image-generation
-// call (e.g. gemini-2.0-flash image output / Imagen). Build the image prompt from
-// the shot's visual style + character + the key action beat, return the data URI
-// or an uploaded Cloud Storage URL.
+// Uses Gemini's image model when a key is set; falls back to an SVG placeholder
+// on error or without a key.
 export async function POST(req: Request) {
   const { prompt, index } = (await req.json()) as { prompt?: string; index?: number };
-  const imageUrl = placeholderStoryboard(prompt ?? "", index ?? 0);
-  return NextResponse.json({ imageUrl });
+
+  if (geminiEnabled()) {
+    try {
+      const imageUrl = await generateStoryboardAI(prompt ?? "");
+      return NextResponse.json({ imageUrl, source: "gemini" });
+    } catch (err) {
+      console.error("[storyboard] image generation failed, using placeholder:", err);
+    }
+  }
+
+  return NextResponse.json({
+    imageUrl: placeholderStoryboard(prompt ?? "", index ?? 0),
+    source: "placeholder",
+  });
 }

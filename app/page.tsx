@@ -15,7 +15,15 @@ import PromptPanel from "@/components/PromptPanel";
 import VideoPanel from "@/components/VideoPanel";
 import ReviewPanel from "@/components/ReviewPanel";
 
-type Busy = null | "story" | "compile" | "review";
+type Busy = null | "story" | "compile" | "review" | "video";
+
+// Extract a raster image (png/jpeg/webp) from a data URL for image-to-video.
+// SVG placeholders (data:image/svg+xml) return null -> text-to-video.
+function rasterFromDataUrl(url?: string): { mimeType: string; data: string } | null {
+  if (!url) return null;
+  const m = url.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.*)$/);
+  return m ? { mimeType: m[1], data: m[2] } : null;
+}
 
 async function postJSON<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -144,6 +152,30 @@ export default function Page() {
     }
   };
 
+  // Generate a video with Veo from the shot's prompt (compiling first if needed).
+  const handleGenerateVideo = async () => {
+    if (!active) return;
+    setBusy("video");
+    try {
+      let prompt = active.compiledPrompt;
+      if (!prompt) {
+        const r = await postJSON<{ prompt: string }>("/api/compile", { settings: active.settings });
+        prompt = r.prompt;
+        patchShot(active.id, { compiledPrompt: prompt });
+      }
+      // Animate from the storyboard frame when it's a real generated image.
+      const image = rasterFromDataUrl(active.storyboardUrl);
+      const { video } = await postJSON<{ video: { mimeType: string; data: string } }>(
+        "/api/generate-video",
+        { prompt, image },
+      );
+      const url = `data:${video.mimeType};base64,${video.data}`;
+      patchShot(active.id, { videoUrl: url, review: undefined });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Apply one review suggestion straight into the active shot's settings.
   // Keeps the review visible (marks the item applied); only the stale prompt is cleared.
   const handleApplySuggestion = (index: number) => {
@@ -246,9 +278,12 @@ export default function Page() {
             <VideoPanel
               videoUrl={active?.videoUrl}
               onSetVideo={handleSetVideo}
+              onGenerate={handleGenerateVideo}
               onReview={handleReview}
+              canGenerate={!!active}
               canReview={!!active?.videoUrl}
-              busy={busy === "review"}
+              generating={busy === "video"}
+              reviewing={busy === "review"}
             />
           </div>
           <div className="min-h-0 flex-1">

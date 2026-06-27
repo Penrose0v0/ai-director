@@ -24,6 +24,8 @@ gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --port 8080 \
+  --timeout 600 \
+  --memory 1Gi \
   --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY},GEMINI_MODEL=${GEMINI_MODEL}"
 
 echo "✓ deployed. URL above ☝"
