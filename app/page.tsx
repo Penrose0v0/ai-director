@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { DirectorSettings, Shot } from "@/lib/types";
 import { emptySettings } from "@/lib/types";
 import { uid } from "@/lib/mock";
-import { extractKeyframes } from "@/lib/frames";
+import { extractKeyframes, loadVideoInline } from "@/lib/frames";
+import { applySuggestion } from "@/lib/suggestions";
 import { useI18n } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ChatBox from "@/components/ChatBox";
@@ -121,21 +122,50 @@ export default function Page() {
     if (!active?.videoUrl) return;
     setBusy("review");
     try {
-      // Sample keyframes client-side; sent to Gemini for the compliance check.
+      // Prefer native video understanding; fall back to keyframes if the clip is
+      // too large to inline or can't be fetched.
+      const video = await loadVideoInline(active.videoUrl);
       let frames: Awaited<ReturnType<typeof extractKeyframes>> = [];
-      try {
-        frames = await extractKeyframes(active.videoUrl, active.settings.duration);
-      } catch (err) {
-        console.warn("keyframe extraction failed; review will fall back to mock:", err);
+      if (!video) {
+        try {
+          frames = await extractKeyframes(active.videoUrl, active.settings.duration);
+        } catch (err) {
+          console.warn("keyframe extraction failed; review will fall back to mock:", err);
+        }
       }
       const { review } = await postJSON<{ review: Shot["review"] }>("/api/review", {
         shot: active,
+        video,
         frames,
       });
       patchShot(active.id, { review });
     } finally {
       setBusy(null);
     }
+  };
+
+  // Apply one review suggestion straight into the active shot's settings.
+  // Keeps the review visible (marks the item applied); only the stale prompt is cleared.
+  const handleApplySuggestion = (index: number) => {
+    if (!active?.review) return;
+    const item = active.review.items[index];
+    if (!item?.suggestion || item.applied) return;
+    const settings = applySuggestion(active.settings, item.suggestion);
+    const items = active.review.items.map((it, j) => (j === index ? { ...it, applied: true } : it));
+    patchShot(active.id, { settings, review: { ...active.review, items }, compiledPrompt: undefined });
+  };
+
+  const handleApplyAll = () => {
+    if (!active?.review) return;
+    let settings = active.settings;
+    const items = active.review.items.map((it) => {
+      if (it.suggestion && !it.applied) {
+        settings = applySuggestion(settings, it.suggestion);
+        return { ...it, applied: true };
+      }
+      return it;
+    });
+    patchShot(active.id, { settings, review: { ...active.review, items }, compiledPrompt: undefined });
   };
 
   return (
@@ -222,7 +252,7 @@ export default function Page() {
             />
           </div>
           <div className="min-h-0 flex-1">
-            <ReviewPanel review={active?.review} />
+            <ReviewPanel review={active?.review} onApply={handleApplySuggestion} onApplyAll={handleApplyAll} />
           </div>
         </div>
       </main>

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import type { ComplianceStatus, DirectorSettings, ReviewResult, Shot } from "./types";
+import type { ComplianceStatus, DirectorSettings, ReviewResult, Shot, Suggestion } from "./types";
 import { emptySettings } from "./types";
 import type { Keyframe } from "./frames";
 import { uid } from "./mock";
@@ -144,6 +144,26 @@ export async function compilePromptAI(settings: DirectorSettings): Promise<strin
 
 // ---- Director Review: keyframes + settings -> compliance check -------------
 
+const SUGGESTION_SCHEMA = {
+  type: "object",
+  description:
+    "A concrete edit to ONE editable content field that would close the gap. Omit for pass items. " +
+    "Only character / visualStyle / timeline / constraint may be edited.",
+  properties: {
+    target: {
+      type: "string",
+      enum: ["character", "visualStyle", "timeline", "constraint"],
+    },
+    beatIndex: { type: "number", description: "0-based timeline beat index; only when target is timeline" },
+    value: {
+      type: "string",
+      description: "Full new value to set. For 'constraint' it is the constraint text to ADD; for 'timeline' the new beat description.",
+    },
+    reason: { type: "string" },
+  },
+  required: ["target", "value", "reason"],
+};
+
 const REVIEW_SCHEMA = {
   type: "object",
   properties: {
@@ -155,6 +175,7 @@ const REVIEW_SCHEMA = {
           expectation: { type: "string", description: "The director setting being checked" },
           observed: { type: "string", description: "What is actually seen in the frames" },
           status: { type: "string", enum: ["pass", "partial", "fail"] },
+          suggestion: SUGGESTION_SCHEMA,
         },
         required: ["expectation", "observed", "status"],
       },
@@ -177,7 +198,7 @@ function settingsChecklist(shot: Shot): string {
   ];
   if (s.character) lines.push(`- Character: ${s.character}`);
   if (s.visualStyle) lines.push(`- Visual style: ${s.visualStyle}`);
-  for (const b of s.timeline) lines.push(`- Action ${b.from}-${b.to}s: ${b.description}`);
+  s.timeline.forEach((b, i) => lines.push(`- Action[${i}] ${b.from}-${b.to}s: ${b.description}`));
   for (const c of s.constraints) lines.push(`- Constraint: ${c}`);
   return lines.join("\n");
 }
@@ -188,31 +209,31 @@ function splitDataUrl(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType: m[1], data: m[2] };
 }
 
-export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<ReviewResult> {
-  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [
-    {
-      text:
-        `Director settings to verify:\n${settingsChecklist(shot)}\n\n` +
-        `Below are ${frames.length} keyframes sampled in order from the generated video, each labeled with its timestamp. ` +
-        `Judge whether the video satisfies EACH director setting. Return exactly one review item per setting listed above ` +
-        `(one per timeline action, plus shot size, camera angle, camera movement, mood, visual style, and each constraint).`,
-    },
+const REVIEW_SYSTEM =
+  `You are a strict film director checking whether a generated video matches the director's intent. ` +
+  `For each setting decide pass / partial / fail and briefly state what you actually observed. ` +
+  `Be honest and specific — do not assume a setting is met without visual evidence. ` +
+  `For every partial or fail item, attach a "suggestion": ONE concrete structured edit that would best close the gap. ` +
+  `Only these content fields may be edited: character (wrong costume/props/identity), visualStyle (wrong scene/weather/light), ` +
+  `timeline (an action not shown — set target="timeline" with its beatIndex and a clearer description), and constraint (add/strengthen a rule). ` +
+  `Shot size, camera angle, camera movement, duration and mood are the director's deliberate choices and MUST NOT be changed — ` +
+  `if one of those is missed by the video, enforce it by ADDING a constraint (e.g. "the camera must clearly perform a slow dolly-in") instead. ` +
+  `Pass items must NOT include a suggestion. ` +
+  `Finally write a concise fixPrompt that re-emphasizes ONLY the failed or partial settings for the next regeneration.`;
+
+type MediaPart = { text?: string; inlineData?: { mimeType: string; data: string } };
+
+async function runReview(shot: Shot, intro: string, mediaParts: MediaPart[]): Promise<ReviewResult> {
+  const contents: MediaPart[] = [
+    { text: `Director settings to verify:\n${settingsChecklist(shot)}\n\n${intro}` },
+    ...mediaParts,
   ];
-  for (const f of frames) {
-    parts.push({ text: `Frame at ${f.time}s:` });
-    parts.push({ inlineData: splitDataUrl(f.dataUrl) });
-  }
 
   const res = await client().models.generateContent({
     model: MODEL,
-    contents: parts,
+    contents,
     config: {
-      systemInstruction:
-        `You are a strict film director checking whether a generated video matches the director's intent. ` +
-        `For each setting decide pass / partial / fail and briefly state what you actually observed across the frames. ` +
-        `Camera movement must be inferred from how the framing changes between consecutive frames. ` +
-        `Be honest and specific — do not assume a setting is met without visual evidence. ` +
-        `Finally write a concise fixPrompt that re-emphasizes ONLY the failed or partial settings for the next regeneration.`,
+      systemInstruction: REVIEW_SYSTEM,
       temperature: 0.3,
       responseMimeType: "application/json",
       responseJsonSchema: REVIEW_SCHEMA,
@@ -222,11 +243,17 @@ export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<Rev
   const text = res.text;
   if (!text) throw new Error("Gemini returned empty review");
   const parsed = JSON.parse(text) as {
-    items: { expectation: string; observed: string; status: ComplianceStatus }[];
+    items: { expectation: string; observed: string; status: ComplianceStatus; suggestion?: Suggestion }[];
     fixPrompt: string;
   };
 
-  const items = parsed.items.map((i) => ({ ...i, field: "general" as const }));
+  const items = parsed.items.map((i) => ({
+    expectation: i.expectation,
+    observed: i.observed,
+    status: i.status,
+    field: "general" as const,
+    suggestion: i.status === "pass" ? undefined : i.suggestion,
+  }));
   const weight = { pass: 1, partial: 0.5, fail: 0 } as const;
   const score = items.length
     ? Math.round((items.reduce((a, i) => a + weight[i.status], 0) / items.length) * 100)
@@ -234,4 +261,33 @@ export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<Rev
   const summary = `${items.filter((i) => i.status === "pass").length}/${items.length} director settings satisfied.`;
 
   return { items, score, summary, fixPrompt: parsed.fixPrompt };
+}
+
+/** Native video understanding — Gemini watches the actual clip (preferred). */
+export async function reviewVideoNativeAI(
+  shot: Shot,
+  video: { mimeType: string; data: string },
+): Promise<ReviewResult> {
+  return runReview(
+    shot,
+    `Below is the generated video. Watch it and judge whether it satisfies EACH director setting (one review item per ` +
+      `setting listed above). Pay close attention to actual motion and timing when judging the camera movement and the action timeline.`,
+    [{ inlineData: video }],
+  );
+}
+
+/** Keyframe fallback — used when the clip is too large to inline or fetch fails. */
+export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<ReviewResult> {
+  const mediaParts: MediaPart[] = [];
+  for (const f of frames) {
+    mediaParts.push({ text: `Frame at ${f.time}s:` });
+    mediaParts.push({ inlineData: splitDataUrl(f.dataUrl) });
+  }
+  return runReview(
+    shot,
+    `Below are ${frames.length} keyframes sampled in order from the generated video, each labeled with its timestamp. ` +
+      `Judge whether the video satisfies EACH director setting (one review item per setting listed above). ` +
+      `Camera movement must be inferred from how the framing changes between consecutive frames.`,
+    mediaParts,
+  );
 }

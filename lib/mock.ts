@@ -82,6 +82,15 @@ export function reviewVideo(shot: Shot): ReviewResult {
             ? "no clear head-raise motion"
             : "shadow is visible but appears too early",
       status: i < 2 ? "fail" : "partial",
+      suggestion:
+        i < 2
+          ? {
+              target: "timeline",
+              beatIndex: i,
+              value: `clearly and unmistakably, ${b.description}`,
+              reason: "Make the action explicit so the model cannot skip it.",
+            }
+          : undefined,
     });
   });
 
@@ -91,6 +100,11 @@ export function reviewVideo(shot: Shot): ReviewResult {
       expectation: s.cameraMovement,
       observed: "camera is mostly static",
       status: "fail",
+      suggestion: {
+        target: "constraint",
+        value: `the camera must clearly perform a ${s.cameraMovement.toLowerCase()}`,
+        reason: "Add it as a hard constraint so the movement is enforced.",
+      },
     });
   }
 
@@ -100,13 +114,28 @@ export function reviewVideo(shot: Shot): ReviewResult {
       expectation: s.visualStyle,
       observed: "night exists, but pavement is not visibly wet",
       status: "partial",
+      suggestion: {
+        target: "visualStyle",
+        value: `${s.visualStyle}, wet reflective pavement with visible rain`,
+        reason: "Spell out the wet, rainy ground so it actually shows up.",
+      },
     });
   }
 
   for (const c of s.constraints) {
     const lc = c.toLowerCase();
     if (lc.includes("extra people")) {
-      items.push({ field: "constraints", expectation: c, observed: "extra pedestrians appear in background", status: "fail" });
+      items.push({
+        field: "constraints",
+        expectation: c,
+        observed: "extra pedestrians appear in background",
+        status: "fail",
+        suggestion: {
+          target: "constraint",
+          value: "absolutely no other people anywhere in the frame, including the background",
+          reason: "Strengthen the wording so background extras are excluded.",
+        },
+      });
     } else if (lc.includes("coat")) {
       items.push({ field: "constraints", expectation: c, observed: "coat stays black", status: "pass" });
     } else {

@@ -42,17 +42,19 @@ GEMINI_MODEL=gemini-2.5-flash   # 可选，默认 gemini-2.5-flash
 | -------------------- | ------------------------------------- |
 | `app/api/story`      | ✅ Gemini 故事理解 → 结构化分镜（回退 mock）          |
 | `app/api/compile`    | ✅ Gemini Prompt Compiler（回退确定性编译器）     |
-| `app/api/review`     | ✅ Gemini 多模态 — 前端抽关键帧 → 逐项 pass/partial/fail + 修复 prompt（回退 mock） |
+| `app/api/review`     | ✅ Gemini 多模态 — 原生视频理解（回退抽帧 → 回退 mock）+ 结构化建议 |
 | `app/api/storyboard` | ⏳ 仍 SVG 占位 — 等接 Gemini 图像模型            |
 
 ### Director Review 怎么跑
 
 不需要视频生成，只要有一段视频即可（PROJECT.md §5.3 的「预设 sample video」思路）：
 
-1. 在 Generated Video 面板**上传一段视频**（或把文件放到 `public/sample.mp4`，再点「用 sample」）。
-2. 点 **Director Review**。前端用 canvas 从视频抽 3–6 张关键帧（`lib/frames.ts`），
-   连同时间戳发给 `/api/review`，Gemini 逐项对照导演设定判断合规，并写出修复 prompt。
-3. 没视频 / 抽帧失败 / 没 key → 自动回退 mock。
+1. 在 Generated Video 面板**上传一段视频**（或点「用 sample」用 `public/sample_video.mp4`）。
+2. 点 **Director Review**，三层策略（`lib/frames.ts` + `lib/gemini.ts`）：
+   - **原生视频**（主）：前端把视频转 base64（≤12MB）发给 `/api/review`，Gemini **直接看整段视频** → `source: gemini-video`
+   - **关键帧**（回退）：视频过大/取不到时，canvas 抽 3–6 帧带时间戳发送 → `source: gemini-frames`
+   - **mock**（兜底）：没 key / 都失败 → `source: mock`
+3. 逐项判 pass/partial/fail，并对每个未达成项给出**可一键应用到分镜的结构化建议**（仅改 人物/视觉风格/时间轴/约束）。
 
 ## 结构
 

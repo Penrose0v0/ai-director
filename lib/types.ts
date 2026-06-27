@@ -37,6 +37,23 @@ export interface Shot {
 
 export type ComplianceStatus = "pass" | "partial" | "fail";
 
+// Which director-board field a suggestion may edit.
+// Deliberate creative choices — shot size, camera angle, camera movement,
+// duration, mood — are intentionally NOT editable by review suggestions; if the
+// video misses one, it is enforced via a constraint instead, not by overwriting
+// the director's intent.
+export type SuggestionTarget = "character" | "visualStyle" | "timeline" | "constraint";
+
+/** A concrete, one-click-applyable edit to the shot's director settings. */
+export interface Suggestion {
+  target: SuggestionTarget;
+  /** 0-based timeline beat index, only when target === "timeline". */
+  beatIndex?: number;
+  /** Full new value to set (for "constraint": text to add; for "duration": a number as string). */
+  value: string;
+  reason: string;
+}
+
 export interface ReviewItem {
   /** What the director asked for. */
   expectation: string;
@@ -45,6 +62,10 @@ export interface ReviewItem {
   status: ComplianceStatus;
   /** Which director field this maps to, for grouping. */
   field?: keyof DirectorSettings | "timeline" | "general";
+  /** Structured fix the user can apply directly into the Director Board. */
+  suggestion?: Suggestion;
+  /** Runtime flag: set once the suggestion has been applied to the shot. */
+  applied?: boolean;
 }
 
 export interface ReviewResult {

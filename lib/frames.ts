@@ -8,6 +8,38 @@ export interface Keyframe {
   dataUrl: string;
 }
 
+export interface InlineVideo {
+  mimeType: string;
+  data: string; // base64, no data: prefix
+}
+
+// Fetch the video bytes and base64-encode them for native Gemini video review.
+// Returns null if the fetch fails or the clip is larger than maxBytes (in which
+// case the caller falls back to keyframe extraction). 12MB keeps the base64
+// request comfortably under Gemini's ~20MB inline limit.
+export async function loadVideoInline(src: string, maxBytes = 12_000_000): Promise<InlineVideo | null> {
+  try {
+    const res = await fetch(src);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (blob.size > maxBytes) return null;
+    const buf = await blob.arrayBuffer();
+    return { mimeType: blob.type || "video/mp4", data: base64FromArrayBuffer(buf) };
+  } catch {
+    return null;
+  }
+}
+
+function base64FromArrayBuffer(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 0x8000; // avoid call-stack overflow on large buffers
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 export async function extractKeyframes(src: string, fallbackDuration = 6): Promise<Keyframe[]> {
   const video = document.createElement("video");
   video.src = src;
