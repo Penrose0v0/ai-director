@@ -27,7 +27,7 @@ export default function VideoPanel({
           <button
             type="button"
             className="text-xs text-accent2 hover:underline"
-            onClick={() => onSetVideo("/sample.mp4")}
+            onClick={() => onSetVideo("/sample_video.mp4")}
           >
             {t("video.useSample")}
           </button>

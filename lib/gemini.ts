@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
-import type { DirectorSettings, Shot } from "./types";
+import type { ComplianceStatus, DirectorSettings, ReviewResult, Shot } from "./types";
 import { emptySettings } from "./types";
+import type { Keyframe } from "./frames";
 import { uid } from "./mock";
 import { CAMERA_ANGLES, CAMERA_MOVEMENTS, MOODS, SHOT_SIZES } from "./options";
 
@@ -139,4 +140,98 @@ export async function compilePromptAI(settings: DirectorSettings): Promise<strin
   const text = res.text?.trim();
   if (!text) throw new Error("Gemini returned empty prompt");
   return text;
+}
+
+// ---- Director Review: keyframes + settings -> compliance check -------------
+
+const REVIEW_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          expectation: { type: "string", description: "The director setting being checked" },
+          observed: { type: "string", description: "What is actually seen in the frames" },
+          status: { type: "string", enum: ["pass", "partial", "fail"] },
+        },
+        required: ["expectation", "observed", "status"],
+      },
+    },
+    fixPrompt: {
+      type: "string",
+      description: "A regeneration prompt re-emphasizing only the failed/partial settings",
+    },
+  },
+  required: ["items", "fixPrompt"],
+};
+
+function settingsChecklist(shot: Shot): string {
+  const s = shot.settings;
+  const lines = [
+    `- Shot size: ${s.shotSize}`,
+    `- Camera angle: ${s.cameraAngle}`,
+    `- Camera movement: ${s.cameraMovement}`,
+    `- Mood: ${s.mood}`,
+  ];
+  if (s.character) lines.push(`- Character: ${s.character}`);
+  if (s.visualStyle) lines.push(`- Visual style: ${s.visualStyle}`);
+  for (const b of s.timeline) lines.push(`- Action ${b.from}-${b.to}s: ${b.description}`);
+  for (const c of s.constraints) lines.push(`- Constraint: ${c}`);
+  return lines.join("\n");
+}
+
+function splitDataUrl(dataUrl: string): { mimeType: string; data: string } {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+  if (!m) throw new Error("bad data URL");
+  return { mimeType: m[1], data: m[2] };
+}
+
+export async function reviewVideoAI(shot: Shot, frames: Keyframe[]): Promise<ReviewResult> {
+  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [
+    {
+      text:
+        `Director settings to verify:\n${settingsChecklist(shot)}\n\n` +
+        `Below are ${frames.length} keyframes sampled in order from the generated video, each labeled with its timestamp. ` +
+        `Judge whether the video satisfies EACH director setting. Return exactly one review item per setting listed above ` +
+        `(one per timeline action, plus shot size, camera angle, camera movement, mood, visual style, and each constraint).`,
+    },
+  ];
+  for (const f of frames) {
+    parts.push({ text: `Frame at ${f.time}s:` });
+    parts.push({ inlineData: splitDataUrl(f.dataUrl) });
+  }
+
+  const res = await client().models.generateContent({
+    model: MODEL,
+    contents: parts,
+    config: {
+      systemInstruction:
+        `You are a strict film director checking whether a generated video matches the director's intent. ` +
+        `For each setting decide pass / partial / fail and briefly state what you actually observed across the frames. ` +
+        `Camera movement must be inferred from how the framing changes between consecutive frames. ` +
+        `Be honest and specific — do not assume a setting is met without visual evidence. ` +
+        `Finally write a concise fixPrompt that re-emphasizes ONLY the failed or partial settings for the next regeneration.`,
+      temperature: 0.3,
+      responseMimeType: "application/json",
+      responseJsonSchema: REVIEW_SCHEMA,
+    },
+  });
+
+  const text = res.text;
+  if (!text) throw new Error("Gemini returned empty review");
+  const parsed = JSON.parse(text) as {
+    items: { expectation: string; observed: string; status: ComplianceStatus }[];
+    fixPrompt: string;
+  };
+
+  const items = parsed.items.map((i) => ({ ...i, field: "general" as const }));
+  const weight = { pass: 1, partial: 0.5, fail: 0 } as const;
+  const score = items.length
+    ? Math.round((items.reduce((a, i) => a + weight[i.status], 0) / items.length) * 100)
+    : 0;
+  const summary = `${items.filter((i) => i.status === "pass").length}/${items.length} director settings satisfied.`;
+
+  return { items, score, summary, fixPrompt: parsed.fixPrompt };
 }

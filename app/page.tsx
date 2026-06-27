@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DirectorSettings, Shot } from "@/lib/types";
 import { emptySettings } from "@/lib/types";
 import { uid } from "@/lib/mock";
+import { extractKeyframes } from "@/lib/frames";
 import { useI18n } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import ChatBox from "@/components/ChatBox";
@@ -31,6 +32,14 @@ export default function Page() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   const [boarding, setBoarding] = useState<string[]>([]);
+  const [gemini, setGemini] = useState<{ on: boolean; model: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/status")
+      .then((r) => r.json())
+      .then((d) => setGemini({ on: !!d.gemini, model: d.model ?? null }))
+      .catch(() => setGemini({ on: false, model: null }));
+  }, []);
 
   const active = useMemo(() => shots.find((s) => s.id === activeId) ?? null, [shots, activeId]);
 
@@ -79,6 +88,24 @@ export default function Page() {
   const updateSettings = (next: DirectorSettings) =>
     active && patchShot(active.id, { settings: next, compiledPrompt: undefined, review: undefined });
 
+  // Attach a video to the active shot — or auto-create a shot if there is none yet,
+  // so "用 sample" / upload always works even before a story has been broken down.
+  const handleSetVideo = (url: string) => {
+    if (active) {
+      patchShot(active.id, { videoUrl: url, review: undefined });
+      return;
+    }
+    const shot: Shot = {
+      id: uid("shot"),
+      title: `Shot ${shots.length + 1} — ${t("shots.newTitle")}`,
+      settings: emptySettings(),
+      videoUrl: url,
+    };
+    setShots((prev) => [...prev, shot]);
+    setActiveId(shot.id);
+    generateBoard(shot, shots.length);
+  };
+
   const handleCompile = async () => {
     if (!active) return;
     setBusy("compile");
@@ -91,10 +118,20 @@ export default function Page() {
   };
 
   const handleReview = async () => {
-    if (!active) return;
+    if (!active?.videoUrl) return;
     setBusy("review");
     try {
-      const { review } = await postJSON<{ review: Shot["review"] }>("/api/review", { shot: active });
+      // Sample keyframes client-side; sent to Gemini for the compliance check.
+      let frames: Awaited<ReturnType<typeof extractKeyframes>> = [];
+      try {
+        frames = await extractKeyframes(active.videoUrl, active.settings.duration);
+      } catch (err) {
+        console.warn("keyframe extraction failed; review will fall back to mock:", err);
+      }
+      const { review } = await postJSON<{ review: Shot["review"] }>("/api/review", {
+        shot: active,
+        frames,
+      });
       patchShot(active.id, { review });
     } finally {
       setBusy(null);
@@ -112,9 +149,18 @@ export default function Page() {
           <span className="hidden text-xs text-zinc-500 sm:inline">{t("header.tagline")}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="hidden rounded-full border border-line bg-panel2 px-3 py-1 text-[11px] text-zinc-400 md:inline">
-            {t("header.mock")}
-          </span>
+          {gemini && (
+            <span
+              className={`hidden items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] md:inline-flex ${
+                gemini.on
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-300"
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${gemini.on ? "bg-emerald-400" : "bg-amber-400"}`} />
+              {gemini.on ? `${t("header.live")} · ${gemini.model}` : t("header.mock")}
+            </span>
+          )}
           <LanguageSwitcher />
         </div>
       </header>
@@ -169,7 +215,7 @@ export default function Page() {
           <div className="min-h-0 flex-1">
             <VideoPanel
               videoUrl={active?.videoUrl}
-              onSetVideo={(url) => active && patchShot(active.id, { videoUrl: url, review: undefined })}
+              onSetVideo={handleSetVideo}
               onReview={handleReview}
               canReview={!!active?.videoUrl}
               busy={busy === "review"}

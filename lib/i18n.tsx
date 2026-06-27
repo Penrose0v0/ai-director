@@ -13,6 +13,7 @@ export const LOCALES: { code: Locale; label: string }[] = [
 const zh = {
   "header.tagline": "把写视频 prompt 变成导演视频。",
   "header.mock": "mock 模式 · 未接入 Gemini",
+  "header.live": "Gemini 已接入",
 
   "story.sample": "雨夜东京，一个女生收到神秘短信后，看到远处黑影并开始逃跑。",
 
@@ -83,6 +84,7 @@ type Dict = typeof zh;
 const ja: Dict = {
   "header.tagline": "動画プロンプトを、動画の演出へ。",
   "header.mock": "モックモード · Gemini 未接続",
+  "header.live": "Gemini 接続済み",
 
   "story.sample": "雨の東京の夜、一人の少女が謎のメッセージを受け取り、遠くの影を見て逃げ出す。",
 
@@ -151,6 +153,7 @@ const ja: Dict = {
 const en: Dict = {
   "header.tagline": "Turn video prompting into video directing.",
   "header.mock": "mock mode · Gemini not connected",
+  "header.live": "Gemini connected",
 
   "story.sample":
     "A rainy Tokyo night: a young woman receives a mysterious message, sees a distant shadow, and starts to run.",
