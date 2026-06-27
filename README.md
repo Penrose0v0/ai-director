@@ -23,18 +23,27 @@ npm run dev      # http://localhost:3000
 - **三语 UI**：右上角切换 中文 / 日本語 / English，选择持久化到 localStorage（`lib/i18n.tsx`）。
 - **分镜图**：拆解故事后，每个镜头会并行生成一张分镜图（现在是 SVG 占位图，接 Gemini 图像模型后即为真实分镜）。
 
-## 接入 Gemini 时改哪里
+## 接入 Gemini
 
-三个 API route 已经按最终签名占好位，替换内部实现即可（搜索 `TODO(gemini)`）：
+把 key 放进 **`.env.local`**（项目根目录，已被 gitignore）：
 
-| Route              | 现在（mock）            | 接入后                                   |
-| ------------------ | ------------------- | ------------------------------------- |
-| `app/api/story`    | `breakdownStory()`  | Gemini 故事理解 → 镜头卡片                     |
-| `app/api/compile`  | `compilePrompt()`（真，确定性） | 可选：再过一遍 Gemini 润色                 |
-| `app/api/review`   | `reviewVideo()`     | Gemini 视频理解 → 逐项 pass/partial/fail + 修复 prompt |
-| `app/api/storyboard` | `placeholderStoryboard()`（SVG 占位） | Gemini 图像模型 → 真实分镜图 |
+```bash
+GEMINI_API_KEY=你的key
+GEMINI_MODEL=gemini-2.5-flash   # 可选，默认 gemini-2.5-flash
+```
 
-把 key 放进 `.env.local`（见 `.env.example`）。
+改完**重启 `npm run dev`**。所有 Gemini 调用集中在 `lib/gemini.ts`，用的是稳定的
+`ai.models.generateContent()` + 结构化输出（`responseJsonSchema`）。
+
+**有 key 就走 Gemini，没 key 或调用出错都会自动回退**，app 始终可用。
+每个 API response 带 `source` 字段（`gemini` / `mock` / `deterministic`）方便确认走的哪条路。
+
+| Route                | 状态                                    |
+| -------------------- | ------------------------------------- |
+| `app/api/story`      | ✅ Gemini 故事理解 → 结构化分镜（回退 mock）          |
+| `app/api/compile`    | ✅ Gemini Prompt Compiler（回退确定性编译器）     |
+| `app/api/review`     | ⏳ 仍 mock — 需视频理解（多模态），等视频那块再接          |
+| `app/api/storyboard` | ⏳ 仍 SVG 占位 — 等接 Gemini 图像模型            |
 
 ## 结构
 
