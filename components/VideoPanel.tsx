@@ -20,7 +20,7 @@ export default function VideoPanel({
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
-    <section className="card p-4">
+    <section className="card h-full overflow-y-auto p-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-100">{t("video.title")}</h2>
         <div className="flex gap-3">

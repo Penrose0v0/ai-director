@@ -6,8 +6,8 @@ import { emptySettings } from "@/lib/types";
 import { uid } from "@/lib/mock";
 import { useI18n } from "@/lib/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import StoryPanel from "@/components/StoryPanel";
-import ShotList from "@/components/ShotList";
+import ChatBox from "@/components/ChatBox";
+import StoryBoardFlow from "@/components/StoryBoardFlow";
 import DirectorBoard from "@/components/DirectorBoard";
 import PromptPanel from "@/components/PromptPanel";
 import VideoPanel from "@/components/VideoPanel";
@@ -51,14 +51,15 @@ export default function Page() {
     }
   };
 
-  // Step 1 -> 2: story breakdown, then storyboard each shot in parallel.
-  const handleBreakdown = async (story: string) => {
+  // Chat -> story breakdown -> storyboard each shot. Returns the assistant reply.
+  const handleChat = async (text: string): Promise<string> => {
     setBusy("story");
     try {
-      const { shots: next } = await postJSON<{ shots: Shot[] }>("/api/story", { story, locale });
+      const { shots: next } = await postJSON<{ shots: Shot[] }>("/api/story", { story: text, locale });
       setShots(next);
       setActiveId(next[0]?.id ?? null);
       next.forEach((shot, i) => generateBoard(shot, i));
+      return t("chat.reply", { n: next.length });
     } finally {
       setBusy(null);
     }
@@ -101,9 +102,9 @@ export default function Page() {
   };
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1400px] flex-col">
+    <div className="flex h-screen flex-col">
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-line px-6 py-4">
+      <header className="flex shrink-0 items-center justify-between border-b border-line px-6 py-3">
         <div className="flex items-baseline gap-3">
           <span className="text-lg font-bold tracking-tight text-zinc-100">
             <span className="text-accent">▸</span> AI Director
@@ -118,47 +119,65 @@ export default function Page() {
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-12 gap-4 p-4">
-        {/* Left column */}
-        <div className="col-span-12 space-y-4 lg:col-span-3">
-          <StoryPanel onBreakdown={handleBreakdown} busy={busy === "story"} />
-          <ShotList
-            shots={shots}
-            activeId={activeId}
-            boardingIds={boarding}
-            onSelect={setActiveId}
-            onAdd={handleAddShot}
-          />
-        </div>
-
-        {/* Center column */}
-        <div className="col-span-12 lg:col-span-5">
-          {active ? (
-            <DirectorBoard
-              shot={active}
-              boarding={boarding.includes(active.id)}
-              onChange={updateSettings}
-              onTitleChange={(title) => patchShot(active.id, { title })}
-              onRegenBoard={() => generateBoard(active, shots.findIndex((s) => s.id === active.id))}
-            />
-          ) : (
-            <div className="card flex h-full min-h-[300px] items-center justify-center p-8 text-center text-sm text-zinc-500">
-              {t("board.empty")}
+      <main className="flex min-h-0 flex-1 gap-4 p-4">
+        {/* Left + center super-column */}
+        <div className="flex min-w-0 flex-[7] flex-col gap-4">
+          {/* top region: chat + current storyboard detail */}
+          <div className="flex min-h-0 flex-1 gap-4">
+            <div className="w-[34%] min-w-[260px] shrink-0">
+              <ChatBox onSend={handleChat} busy={busy === "story"} />
             </div>
-          )}
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {active ? (
+                <div className="space-y-4">
+                  <DirectorBoard
+                    shot={active}
+                    boarding={boarding.includes(active.id)}
+                    onChange={updateSettings}
+                    onTitleChange={(title) => patchShot(active.id, { title })}
+                    onRegenBoard={() => generateBoard(active, shots.findIndex((s) => s.id === active.id))}
+                  />
+                  <PromptPanel
+                    prompt={active.compiledPrompt}
+                    onCompile={handleCompile}
+                    busy={busy === "compile"}
+                  />
+                </div>
+              ) : (
+                <div className="card flex h-full min-h-[300px] items-center justify-center p-8 text-center text-sm text-zinc-500">
+                  {t("flow.empty")}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* bottom: storyboard flow */}
+          <div className="h-[200px] shrink-0">
+            <StoryBoardFlow
+              shots={shots}
+              activeId={activeId}
+              boardingIds={boarding}
+              onSelect={setActiveId}
+              onAdd={handleAddShot}
+            />
+          </div>
         </div>
 
-        {/* Right column */}
-        <div className="col-span-12 space-y-4 lg:col-span-4">
-          <PromptPanel prompt={active?.compiledPrompt} onCompile={handleCompile} busy={busy === "compile"} />
-          <VideoPanel
-            videoUrl={active?.videoUrl}
-            onSetVideo={(url) => active && patchShot(active.id, { videoUrl: url, review: undefined })}
-            onReview={handleReview}
-            canReview={!!active?.videoUrl}
-            busy={busy === "review"}
-          />
-          <ReviewPanel review={active?.review} />
+        {/* Right column: video + review */}
+        <div className="flex w-[320px] shrink-0 flex-col gap-4">
+          <div className="min-h-0 flex-1">
+            <VideoPanel
+              videoUrl={active?.videoUrl}
+              onSetVideo={(url) => active && patchShot(active.id, { videoUrl: url, review: undefined })}
+              onReview={handleReview}
+              canReview={!!active?.videoUrl}
+              busy={busy === "review"}
+            />
+          </div>
+          <div className="min-h-0 flex-1">
+            <ReviewPanel review={active?.review} />
+          </div>
         </div>
       </main>
     </div>

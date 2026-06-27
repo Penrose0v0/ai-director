@@ -14,16 +14,19 @@ const zh = {
   "header.tagline": "把写视频 prompt 变成导演视频。",
   "header.mock": "mock 模式 · 未接入 Gemini",
 
-  "story.title": "1 · 故事",
-  "story.useSample": "用示例",
-  "story.placeholder": "用一两句话描述你的故事…",
-  "story.breakdown": "拆解为镜头 →",
-  "story.breakingDown": "生成镜头中…",
   "story.sample": "雨夜东京，一个女生收到神秘短信后，看到远处黑影并开始逃跑。",
 
-  "shots.title": "2 · 镜头",
-  "shots.add": "+ 新镜头",
-  "shots.empty": "还没有镜头。先在上面拆解故事，或手动新建。",
+  "chat.title": "Chat · 导演助手",
+  "chat.greeting": "嗨，我是你的 AI 副导演。先用一句话告诉我你想拍什么，我来把它拆成分镜。",
+  "chat.placeholder": "描述你的故事或想调整的地方…",
+  "chat.send": "发送",
+  "chat.thinking": "思考中…",
+  "chat.useSample": "用示例故事",
+  "chat.reply": "已根据你的故事拆出 {n} 个分镜，并生成了分镜图。点下方分镜流里的任意一格来细化导演设定。",
+
+  "flow.title": "Story Board Flow · 分镜流",
+  "flow.empty": "还没有分镜。在左边用 Chat 描述你的故事，我来拆。",
+  "flow.add": "+ 分镜",
   "shots.newTitle": "新镜头",
   "shots.boarding": "分镜生成中…",
 
@@ -81,16 +84,19 @@ const ja: Dict = {
   "header.tagline": "動画プロンプトを、動画の演出へ。",
   "header.mock": "モックモード · Gemini 未接続",
 
-  "story.title": "1 · ストーリー",
-  "story.useSample": "サンプル",
-  "story.placeholder": "ストーリーを一言で…",
-  "story.breakdown": "ショットに分解 →",
-  "story.breakingDown": "ショット生成中…",
   "story.sample": "雨の東京の夜、一人の少女が謎のメッセージを受け取り、遠くの影を見て逃げ出す。",
 
-  "shots.title": "2 · ショット",
-  "shots.add": "+ 新規ショット",
-  "shots.empty": "ショットがありません。上でストーリーを分解するか、手動で追加してください。",
+  "chat.title": "Chat · 演出アシスタント",
+  "chat.greeting": "やあ、AI 副監督です。撮りたいものを一言で教えてください。ショットに分解します。",
+  "chat.placeholder": "ストーリーや調整したい点を入力…",
+  "chat.send": "送信",
+  "chat.thinking": "考え中…",
+  "chat.useSample": "サンプルを使う",
+  "chat.reply": "ストーリーから {n} 個のショットに分解し、絵コンテを生成しました。下のフローから選んで演出を詰めましょう。",
+
+  "flow.title": "ストーリーボードフロー",
+  "flow.empty": "まだショットがありません。左の Chat でストーリーを教えてください。",
+  "flow.add": "+ ショット",
   "shots.newTitle": "新規ショット",
   "shots.boarding": "絵コンテ生成中…",
 
@@ -146,17 +152,22 @@ const en: Dict = {
   "header.tagline": "Turn video prompting into video directing.",
   "header.mock": "mock mode · Gemini not connected",
 
-  "story.title": "1 · Story",
-  "story.useSample": "Use sample",
-  "story.placeholder": "Describe your story in a sentence or two…",
-  "story.breakdown": "Break into shots →",
-  "story.breakingDown": "Generating shots…",
   "story.sample":
     "A rainy Tokyo night: a young woman receives a mysterious message, sees a distant shadow, and starts to run.",
 
-  "shots.title": "2 · Shots",
-  "shots.add": "+ New shot",
-  "shots.empty": "No shots yet. Break down a story above, or add one manually.",
+  "chat.title": "Chat · Director Assistant",
+  "chat.greeting":
+    "Hi, I'm your AI assistant director. Tell me what you want to shoot in a sentence, and I'll break it into shots.",
+  "chat.placeholder": "Describe your story or what to adjust…",
+  "chat.send": "Send",
+  "chat.thinking": "Thinking…",
+  "chat.useSample": "Use sample story",
+  "chat.reply":
+    "I broke your story into {n} shots and generated storyboards. Pick any frame in the flow below to refine the directing.",
+
+  "flow.title": "Story Board Flow",
+  "flow.empty": "No shots yet. Describe your story in the Chat on the left and I'll break it down.",
+  "flow.add": "+ Shot",
   "shots.newTitle": "New shot",
   "shots.boarding": "Storyboarding…",
 
@@ -211,7 +222,8 @@ const en: Dict = {
 
 const DICTS: Record<Locale, Dict> = { zh, ja, en };
 
-type Ctx = { locale: Locale; setLocale: (l: Locale) => void; t: (k: keyof Dict) => string };
+type Vars = Record<string, string | number>;
+type Ctx = { locale: Locale; setLocale: (l: Locale) => void; t: (k: keyof Dict, vars?: Vars) => string };
 const I18nContext = createContext<Ctx | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
@@ -227,7 +239,11 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("ai-director-locale", l);
   };
 
-  const t = (k: keyof Dict) => DICTS[locale][k] ?? k;
+  const t = (k: keyof Dict, vars?: Vars) => {
+    let s: string = DICTS[locale][k] ?? k;
+    if (vars) for (const [key, val] of Object.entries(vars)) s = s.replace(`{${key}}`, String(val));
+    return s;
+  };
 
   return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>;
 }

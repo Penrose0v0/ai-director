@@ -10,7 +10,7 @@ export default function ReviewPanel({ review }: { review?: ReviewResult }) {
 
   if (!review) {
     return (
-      <section className="card p-4">
+      <section className="card h-full overflow-y-auto p-4">
         <h2 className="mb-2 text-sm font-semibold text-zinc-100">{t("review.title")}</h2>
         <p className="text-xs text-zinc-500">{t("review.empty")}</p>
       </section>
@@ -21,7 +21,7 @@ export default function ReviewPanel({ review }: { review?: ReviewResult }) {
     review.score >= 75 ? "text-emerald-300" : review.score >= 45 ? "text-amber-300" : "text-rose-300";
 
   return (
-    <section className="card p-4">
+    <section className="card h-full overflow-y-auto p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-zinc-100">{t("review.title")}</h2>
         <div className="text-right">
