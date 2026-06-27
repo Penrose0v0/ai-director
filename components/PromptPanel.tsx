@@ -1,6 +1,7 @@
 "use client";
 
 import CopyButton from "./CopyButton";
+import { useI18n } from "@/lib/i18n";
 
 export default function PromptPanel({
   prompt,
@@ -11,10 +12,11 @@ export default function PromptPanel({
   onCompile: () => void;
   busy: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <section className="card p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-100">3 · Compiled Prompt</h2>
+        <h2 className="text-sm font-semibold text-zinc-100">{t("prompt.title")}</h2>
         {prompt && <CopyButton text={prompt} />}
       </div>
 
@@ -23,11 +25,11 @@ export default function PromptPanel({
           {prompt}
         </pre>
       ) : (
-        <p className="text-xs text-zinc-500">点下面的按钮，把导演设定编译成完整 prompt。</p>
+        <p className="text-xs text-zinc-500">{t("prompt.empty")}</p>
       )}
 
       <button className="btn-primary mt-3 w-full" onClick={onCompile} disabled={busy} type="button">
-        {busy ? "编译中…" : "Compile Prompt"}
+        {busy ? t("prompt.compiling") : t("prompt.compile")}
       </button>
     </section>
   );

@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-
-const SAMPLE = "雨夜东京，一个女生收到神秘短信后，看到远处黑影并开始逃跑。";
+import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
 export default function StoryPanel({
   onBreakdown,
@@ -11,25 +10,38 @@ export default function StoryPanel({
   onBreakdown: (story: string) => void;
   busy: boolean;
 }) {
-  const [story, setStory] = useState(SAMPLE);
+  const { t, locale } = useI18n();
+  const [story, setStory] = useState("");
+  const [touched, setTouched] = useState(false);
+
+  // Keep the sample in sync with the active language until the user edits it.
+  useEffect(() => {
+    if (!touched) setStory(t("story.sample"));
+  }, [locale, touched, t]);
 
   return (
     <section className="card p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-100">1 · 故事</h2>
+        <h2 className="text-sm font-semibold text-zinc-100">{t("story.title")}</h2>
         <button
           className="text-xs text-accent2 hover:underline"
-          onClick={() => setStory(SAMPLE)}
+          onClick={() => {
+            setStory(t("story.sample"));
+            setTouched(false);
+          }}
           type="button"
         >
-          用示例
+          {t("story.useSample")}
         </button>
       </div>
       <textarea
         className="control min-h-[88px] resize-y"
         value={story}
-        onChange={(e) => setStory(e.target.value)}
-        placeholder="用一两句话描述你的故事…"
+        onChange={(e) => {
+          setStory(e.target.value);
+          setTouched(true);
+        }}
+        placeholder={t("story.placeholder")}
       />
       <button
         className="btn-primary mt-3 w-full"
@@ -37,7 +49,7 @@ export default function StoryPanel({
         onClick={() => onBreakdown(story)}
         type="button"
       >
-        {busy ? "生成镜头中…" : "拆解为镜头 →"}
+        {busy ? t("story.breakingDown") : t("story.breakdown")}
       </button>
     </section>
   );

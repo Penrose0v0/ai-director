@@ -17,8 +17,11 @@ npm run dev      # http://localhost:3000
 还没接入 Gemini。所有 AI 调用都走 mock，但**完整闭环 UI 与数据流已经跑通**：
 
 ```
-故事 → 拆解镜头 → Director Board → Compile Prompt → 加载视频 → Director Review → 修复 Prompt
+故事 → 拆解镜头(+生成分镜图) → Director Board → Compile Prompt → 加载视频 → Director Review → 修复 Prompt
 ```
+
+- **三语 UI**：右上角切换 中文 / 日本語 / English，选择持久化到 localStorage（`lib/i18n.tsx`）。
+- **分镜图**：拆解故事后，每个镜头会并行生成一张分镜图（现在是 SVG 占位图，接 Gemini 图像模型后即为真实分镜）。
 
 ## 接入 Gemini 时改哪里
 
@@ -29,6 +32,7 @@ npm run dev      # http://localhost:3000
 | `app/api/story`    | `breakdownStory()`  | Gemini 故事理解 → 镜头卡片                     |
 | `app/api/compile`  | `compilePrompt()`（真，确定性） | 可选：再过一遍 Gemini 润色                 |
 | `app/api/review`   | `reviewVideo()`     | Gemini 视频理解 → 逐项 pass/partial/fail + 修复 prompt |
+| `app/api/storyboard` | `placeholderStoryboard()`（SVG 占位） | Gemini 图像模型 → 真实分镜图 |
 
 把 key 放进 `.env.local`（见 `.env.example`）。
 

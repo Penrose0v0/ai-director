@@ -3,13 +3,16 @@
 import type { ReviewResult } from "@/lib/types";
 import StatusBadge from "./StatusBadge";
 import CopyButton from "./CopyButton";
+import { useI18n } from "@/lib/i18n";
 
 export default function ReviewPanel({ review }: { review?: ReviewResult }) {
+  const { t } = useI18n();
+
   if (!review) {
     return (
       <section className="card p-4">
-        <h2 className="mb-2 text-sm font-semibold text-zinc-100">5 · Director Review</h2>
-        <p className="text-xs text-zinc-500">审查后，这里会逐项显示符合 / 部分符合 / 不符合，并给出修复 prompt。</p>
+        <h2 className="mb-2 text-sm font-semibold text-zinc-100">{t("review.title")}</h2>
+        <p className="text-xs text-zinc-500">{t("review.empty")}</p>
       </section>
     );
   }
@@ -20,7 +23,7 @@ export default function ReviewPanel({ review }: { review?: ReviewResult }) {
   return (
     <section className="card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-100">5 · Director Review</h2>
+        <h2 className="text-sm font-semibold text-zinc-100">{t("review.title")}</h2>
         <div className="text-right">
           <div className={`text-2xl font-bold ${scoreColor}`}>{review.score}%</div>
           <div className="text-[11px] text-zinc-500">{review.summary}</div>
@@ -31,9 +34,9 @@ export default function ReviewPanel({ review }: { review?: ReviewResult }) {
         <table className="w-full text-left text-xs">
           <thead className="bg-panel2 text-zinc-400">
             <tr>
-              <th className="px-3 py-2 font-medium">导演设定</th>
-              <th className="px-3 py-2 font-medium">生成结果</th>
-              <th className="px-3 py-2 font-medium">状态</th>
+              <th className="px-3 py-2 font-medium">{t("review.colExpect")}</th>
+              <th className="px-3 py-2 font-medium">{t("review.colObserved")}</th>
+              <th className="px-3 py-2 font-medium">{t("review.colStatus")}</th>
             </tr>
           </thead>
           <tbody>
@@ -53,7 +56,7 @@ export default function ReviewPanel({ review }: { review?: ReviewResult }) {
       {/* Fix prompt */}
       <div className="mt-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-zinc-100">6 · 修复 Prompt</h3>
+          <h3 className="text-sm font-semibold text-zinc-100">{t("review.fixTitle")}</h3>
           <CopyButton text={review.fixPrompt} />
         </div>
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-ink p-3 text-xs leading-relaxed text-zinc-300">

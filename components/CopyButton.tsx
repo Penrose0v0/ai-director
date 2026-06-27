@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 
-export default function CopyButton({ text, label = "复制" }: { text: string; label?: string }) {
+export default function CopyButton({ text }: { text: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -18,7 +20,7 @@ export default function CopyButton({ text, label = "复制" }: { text: string; l
         }
       }}
     >
-      {copied ? "已复制 ✓" : label}
+      {copied ? t("common.copied") : t("common.copy")}
     </button>
   );
 }

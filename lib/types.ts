@@ -26,6 +26,8 @@ export interface Shot {
   id: string;
   title: string;
   settings: DirectorSettings;
+  /** Storyboard frame generated from the shot (Gemini image model; mocked for now). */
+  storyboardUrl?: string;
   /** Last compiled prompt, if any. */
   compiledPrompt?: string;
   /** Video source used for review (sample url or uploaded blob url). */

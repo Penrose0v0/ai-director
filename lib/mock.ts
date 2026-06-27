@@ -12,22 +12,42 @@ import { emptySettings } from "./types";
 let _id = 0;
 export const uid = (prefix = "id") => `${prefix}_${Date.now().toString(36)}_${_id++}`;
 
+type Locale = "zh" | "ja" | "en";
+
+const TITLES: Record<Locale, string[]> = {
+  zh: [
+    "Shot 1 — 女生站在便利店门口看手机",
+    "Shot 2 — 她抬头看到远处黑影",
+    "Shot 3 — 她跑进雨中",
+  ],
+  ja: [
+    "Shot 1 — コンビニ前でスマホを見る少女",
+    "Shot 2 — 顔を上げ、遠くの影に気づく",
+    "Shot 3 — 雨の中へ走り出す",
+  ],
+  en: [
+    "Shot 1 — Woman checking her phone outside a convenience store",
+    "Shot 2 — She raises her head and notices a distant shadow",
+    "Shot 3 — She runs into the rain",
+  ],
+};
+
+const CHARACTER: Record<Locale, [string, string]> = {
+  zh: ["年轻女性，黑色外套，手持手机", "年轻女性，黑色外套"],
+  ja: ["黒いコートの若い女性、スマホを持つ", "黒いコートの若い女性"],
+  en: ["young woman, black coat, holding a phone", "young woman, black coat"],
+};
+
 /** Mock of Gemini "story understanding": story text -> suggested shot cards. */
-export function breakdownStory(story: string): Shot[] {
+export function breakdownStory(story: string, locale: Locale = "zh"): Shot[] {
   const trimmed = story.trim();
   // A fixed, demo-friendly breakdown that loosely keys off the story text.
-  const titles = trimmed
-    ? [
-        "Shot 1 — 女生站在便利店门口看手机",
-        "Shot 2 — 她抬头看到远处黑影",
-        "Shot 3 — 她跑进雨中",
-      ]
-    : ["Shot 1 — 新镜头"];
+  const titles = trimmed ? TITLES[locale] : [TITLES[locale][0]];
 
   return titles.map((title, i) => {
     const settings: DirectorSettings = {
       ...emptySettings(),
-      character: i === 0 ? "年轻女性，黑色外套，手持手机" : "年轻女性，黑色外套",
+      character: i === 0 ? CHARACTER[locale][0] : CHARACTER[locale][1],
       visualStyle: "rainy Tokyo night, neon reflections on wet pavement",
       mood: "Suspenseful",
       timeline:
