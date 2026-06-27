@@ -124,7 +124,7 @@ export default function Page() {
         <div className="flex min-w-0 flex-[7] flex-col gap-4">
           {/* top region: chat + current storyboard detail */}
           <div className="flex min-h-0 flex-1 gap-4">
-            <div className="w-[34%] min-w-[260px] shrink-0">
+            <div className="w-[300px] shrink-0">
               <ChatBox onSend={handleChat} busy={busy === "story"} />
             </div>
 
@@ -165,7 +165,7 @@ export default function Page() {
         </div>
 
         {/* Right column: video + review */}
-        <div className="flex w-[320px] shrink-0 flex-col gap-4">
+        <div className="flex w-[420px] shrink-0 flex-col gap-4 xl:w-[480px]">
           <div className="min-h-0 flex-1">
             <VideoPanel
               videoUrl={active?.videoUrl}
