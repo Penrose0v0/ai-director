@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+# Never bake secrets into the image — key is injected at runtime by Cloud Run.
+.env
+.env.*
+README.md
+documents
+*.tsbuildinfo
+.DS_Store
